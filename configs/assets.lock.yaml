@@ -1,0 +1,26 @@
+schema_version: 1
+
+datasets:
+  fei_aligned:
+    homepage: https://fei.edu.br/~cet/facedatabase.html
+    license_id: FEI-research-only
+    expected_identities: 200
+    expected_conditions_per_identity: 2
+    archives:
+      - filename: frontalimages_manuallyaligned_part1.zip
+        url: https://fei.edu.br/~cet/frontalimages_manuallyaligned_part1.zip
+        sha256: d0891640e52a3269eb065c398a2bf1577b60fe8f2342915c4ae3ce10ee5187c1
+      - filename: frontalimages_manuallyaligned_part2.zip
+        url: https://fei.edu.br/~cet/frontalimages_manuallyaligned_part2.zip
+        sha256: b3f8c9c170d5a31bb04ac790ede5dbaafbef7a780077cdcf6e10ebddd22fd57c
+
+models:
+  lvface_t_glint360k:
+    code_repository: https://github.com/bytedance/LVFace.git
+    code_revision: 80bd20c8bb78e56eb708941180d800a27c396a6b
+    code_license: MIT
+    weight_repository: bytedance-research/LVFace
+    weight_revision: 48fb6c10b26367f82cd39704874f45413bdf092b
+    weight_filename: LVFace-T_Glint360K/LVFace-T_Glint360K.pt
+    weight_sha256: 1f5b73d6f7a18e431d95d2ccabb4d00dca2a6f2004eb74de2c5788d386cb59ec
+    weight_license_id: LVFace-non-commercial-research
