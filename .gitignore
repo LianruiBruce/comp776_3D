@@ -42,8 +42,11 @@ Desktop.ini
 
 # Downloaded third-party code and caches. Keep the README files beside them.
 /third_party/LVFace/
+/third_party/InsightFace/
+/third_party/PhotoMaker/
 /artifacts/cache/
 /artifacts/tmp/
+/artifacts/pytest_*/
 /.cache/
 
 # Per-run artifacts (curated summaries belong under reports/)

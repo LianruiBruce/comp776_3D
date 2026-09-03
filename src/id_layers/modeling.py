@@ -23,6 +23,26 @@ class ExtractionResult:
     metadata: dict[str, Any]
 
 
+def non_affine_ln_token_mean(
+    tokens: torch.Tensor, eps: float = 1e-5
+) -> torch.Tensor:
+    """Standardize each token over channels, then average over spatial tokens."""
+    if tokens.ndim != 3:
+        raise ValueError(
+            f"Expected tokens with shape [batch, tokens, channels], received {tokens.shape}"
+        )
+    if eps <= 0.0:
+        raise ValueError(f"LayerNorm epsilon must be positive, received {eps}")
+    standardized = F.layer_norm(
+        tokens,
+        normalized_shape=(tokens.shape[-1],),
+        weight=None,
+        bias=None,
+        eps=eps,
+    )
+    return standardized.mean(dim=1)
+
+
 def compare_extraction_results(
     first: ExtractionResult, second: ExtractionResult
 ) -> dict[str, Any]:
@@ -126,6 +146,7 @@ def extract_layer_embeddings(
     device_name: str,
     representations: Iterable[str],
     image_size: int,
+    layers: Iterable[int] | None = None,
 ) -> ExtractionResult:
     device = torch.device(device_name)
     if device.type == "cuda" and not torch.cuda.is_available():
@@ -133,14 +154,32 @@ def extract_layer_embeddings(
     model = model.to(device)
     model.eval()
     requested = list(representations)
-    supported = {"token_mean", "head_projected"}
+    supported = {"token_mean", "head_projected", "probe_ln0_mean"}
     unknown = sorted(set(requested) - supported)
     if unknown:
         raise ValueError(f"Unsupported representations: {unknown}")
 
+    layer_count = len(model.blocks)
+    requested_layers = (
+        list(range(1, layer_count + 1))
+        if layers is None
+        else sorted(set(int(layer) for layer in layers))
+    )
+    if not requested_layers:
+        raise ValueError("At least one Transformer layer must be requested")
+    invalid_layers = [
+        layer for layer in requested_layers if layer < 1 or layer > layer_count
+    ]
+    if invalid_layers:
+        raise ValueError(
+            f"Requested layers outside [1, {layer_count}]: {invalid_layers}"
+        )
+
     captured: dict[int, torch.Tensor] = {}
     handles = []
     for layer_index, block in enumerate(model.blocks, start=1):
+        if layer_index not in requested_layers:
+            continue
 
         def capture(
             _module: torch.nn.Module, _inputs: Any, output: torch.Tensor, idx=layer_index
@@ -151,11 +190,17 @@ def extract_layer_embeddings(
 
     buffers: dict[tuple[int, str], list[np.ndarray]] = {
         (layer, representation): []
-        for layer in range(1, len(model.blocks) + 1)
+        for layer in requested_layers
         for representation in requested
     }
-    max_final_difference = 0.0
+    max_final_difference: float | None = (
+        0.0
+        if "head_projected" in requested and layer_count in requested_layers
+        else None
+    )
     sample_count = 0
+    observed_indices: list[np.ndarray] = []
+    index_tracking: bool | None = None
 
     try:
         _warm_up(model, device, image_size)
@@ -168,30 +213,51 @@ def extract_layer_embeddings(
         with torch.inference_mode():
             for batch in loader:
                 images = batch["image"].to(device, non_blocking=device.type == "cuda")
+                has_indices = "index" in batch
+                if index_tracking is None:
+                    index_tracking = has_indices
+                elif index_tracking != has_indices:
+                    raise RuntimeError("DataLoader index metadata was present inconsistently")
+                if has_indices:
+                    indices = torch.as_tensor(batch["index"]).detach().cpu().numpy()
+                    observed_indices.append(np.asarray(indices, dtype=np.int64).reshape(-1))
                 captured.clear()
                 official = model(images)
                 official_normalized = F.normalize(official.float(), dim=1)
                 sample_count += images.shape[0]
 
-                if len(captured) != len(model.blocks):
+                if len(captured) != len(requested_layers):
                     raise RuntimeError(
-                        f"Expected {len(model.blocks)} hooked layers, captured {len(captured)}"
+                        f"Expected {len(requested_layers)} hooked layers, "
+                        f"captured {len(captured)}"
                     )
-                for layer_index in range(1, len(model.blocks) + 1):
-                    tokens = model.norm(captured[layer_index].float())
-                    if "token_mean" in requested:
-                        pooled = F.normalize(tokens.mean(dim=1), dim=1)
-                        buffers[(layer_index, "token_mean")].append(
-                            pooled.cpu().numpy().astype(np.float32, copy=False)
+                for layer_index in requested_layers:
+                    raw_tokens = captured[layer_index].float()
+                    if "probe_ln0_mean" in requested:
+                        probe_input = non_affine_ln_token_mean(raw_tokens)
+                        buffers[(layer_index, "probe_ln0_mean")].append(
+                            probe_input.cpu().numpy().astype(np.float32, copy=False)
                         )
-                    if "head_projected" in requested:
-                        projected = F.normalize(model.feature(tokens.flatten(1)).float(), dim=1)
-                        buffers[(layer_index, "head_projected")].append(
-                            projected.cpu().numpy().astype(np.float32, copy=False)
-                        )
-                        if layer_index == len(model.blocks):
-                            difference = (projected - official_normalized).abs().max().item()
-                            max_final_difference = max(max_final_difference, difference)
+                    if "token_mean" in requested or "head_projected" in requested:
+                        tokens = model.norm(raw_tokens)
+                        if "token_mean" in requested:
+                            pooled = F.normalize(tokens.mean(dim=1), dim=1)
+                            buffers[(layer_index, "token_mean")].append(
+                                pooled.cpu().numpy().astype(np.float32, copy=False)
+                            )
+                        if "head_projected" in requested:
+                            projected = F.normalize(
+                                model.feature(tokens.flatten(1)).float(), dim=1
+                            )
+                            buffers[(layer_index, "head_projected")].append(
+                                projected.cpu().numpy().astype(np.float32, copy=False)
+                            )
+                            if layer_index == len(model.blocks):
+                                difference = (
+                                    projected - official_normalized
+                                ).abs().max().item()
+                                assert max_final_difference is not None
+                                max_final_difference = max(max_final_difference, difference)
 
         _device_synchronize(device)
         elapsed = time.perf_counter() - start
@@ -207,16 +273,26 @@ def extract_layer_embeddings(
         raise RuntimeError("Layer embedding sample counts are inconsistent")
     if not all(np.isfinite(value).all() for value in embeddings.values()):
         raise RuntimeError("Non-finite layer embeddings detected")
+    sample_order_verified = bool(index_tracking)
+    if sample_order_verified:
+        flattened_indices = np.concatenate(observed_indices)
+        if not np.array_equal(flattened_indices, np.arange(sample_count)):
+            raise RuntimeError(
+                "DataLoader sample order differs from the manifest's sequential order"
+            )
 
     metadata = {
         "device": str(device),
         "sample_count": sample_count,
+        "sample_order_verified": sample_order_verified,
         "layer_count": len(model.blocks),
+        "extracted_layers": requested_layers,
         "parameter_count": sum(parameter.numel() for parameter in model.parameters()),
         "elapsed_seconds": elapsed,
         "images_per_second": sample_count / elapsed,
         "peak_memory_allocated_bytes": peak_bytes,
         "final_head_max_abs_difference": max_final_difference,
+        "probe_layer_norm_eps": 1e-5 if "probe_ln0_mean" in requested else None,
         "representations": requested,
     }
     return ExtractionResult(embeddings=embeddings, metadata=metadata)

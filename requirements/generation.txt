@@ -1,0 +1,9 @@
+# Pinned runtime for the official PhotoMaker V2 code at revision
+# 060b4fcb10b76a4554edf565d6106b7e36c968f0. PyTorch, Transformers,
+# Hugging Face Hub, Pillow, NumPy and ONNX Runtime GPU come from the
+# repository's existing pinned environments.
+diffusers==0.29.2
+accelerate==0.31.0
+peft==0.11.1
+omegaconf==2.3.0
+einops==0.8.1

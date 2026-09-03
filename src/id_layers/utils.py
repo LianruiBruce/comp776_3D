@@ -128,7 +128,17 @@ def git_revision(repository: Path) -> dict[str, Any]:
 
 def environment_metadata(repository: Path) -> dict[str, Any]:
     packages: dict[str, str] = {}
-    for module_name in ["numpy", "pandas", "sklearn", "timm", "torch", "torchvision"]:
+    for module_name in [
+        "cv2",
+        "insightface",
+        "numpy",
+        "onnxruntime",
+        "pandas",
+        "sklearn",
+        "timm",
+        "torch",
+        "torchvision",
+    ]:
         try:
             module = __import__(module_name)
             packages[module_name] = getattr(module, "__version__", "unknown")

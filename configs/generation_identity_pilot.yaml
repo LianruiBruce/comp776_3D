@@ -1,0 +1,453 @@
+schema_version: 1
+
+experiment:
+  name: generation_identity_pilot
+  design_version: photomaker_v2_exploratory_v1
+  scope: exploratory_internal_diagnostic_not_confirmation
+  deterministic: true
+  output_root: artifacts/runs
+  expected_generated_images: 192
+  factorial_assertion:
+    identity_count: 8
+    condition_count: 6
+    prompt_count: 2
+    seed_count: 2
+    product: 192
+  prohibited_uses:
+    - external_confirmation
+    - layer_selection
+    - custom_mapper_training
+    - demographic_fairness_claim
+    - state_of_the_art_comparison
+
+assets:
+  lock_file: configs/assets.lock.yaml
+  dataset_asset_name: fei_full
+  photomaker_asset_name: photomaker_v2
+  base_model_asset_name: realvisxl_v4_fp16
+  conditioner_recognizer_asset_name: insightface_buffalo_l_scrfd10g
+  require_locked_revisions_and_sha256: true
+
+data:
+  name: fei_full_generation_pilot
+  manifest_path: data/manifests/fei_full_seed20260902.csv
+  path_root: data
+  resolve_image_path_columns_against: path_root
+  eligible_split: internal_eval
+  interpretation: all_fei_identities_previously_touched_exploratory_only
+  image_path_column_for_generation: source_relative_path
+  image_path_column_for_real_query_evaluation: relative_path
+  source_license_id: FEI-research-only
+  identities:
+    - fei_0058
+    - fei_0075
+    - fei_0092
+    - fei_0100
+    - fei_0115
+    - fei_0162
+    - fei_0168
+    - fei_0193
+  donor_mapping:
+    fei_0058: fei_0075
+    fei_0075: fei_0092
+    fei_0092: fei_0100
+    fei_0100: fei_0115
+    fei_0115: fei_0162
+    fei_0162: fei_0168
+    fei_0168: fei_0193
+    fei_0193: fei_0058
+  reference_conditions:
+    k1:
+      - frontal_neutral
+    k4_diverse:
+      - frontal_neutral
+      - left_profile
+      - right_profile
+      - frontal_scale
+    k4_repeat:
+      - frontal_neutral
+      - frontal_neutral
+      - frontal_neutral
+      - frontal_neutral
+  heldout_query_conditions:
+    - frontal_smile
+    - left_three_quarter
+    - right_three_quarter_expression
+  enforce_reference_query_disjoint: true
+  expected_required_manifest_rows: 56
+  require_one_row_per_identity_condition: true
+  require_source_files: true
+  require_query_alignment_status: aligned
+  replacement_on_failure: forbidden
+
+model:
+  pipeline: photomaker_v2
+  pm_version: v2
+  base_model: realvisxl_v4_fp16
+  dtype: float16
+  device: cuda
+  batch_size: 1
+  enable_model_cpu_offload: true
+  fuse_photomaker_lora: true
+  scheduler:
+    class: EulerDiscreteScheduler
+    source: base_model_config
+  trigger_word: img
+  class_word: person
+  trigger_phrase: person img
+  num_inference_steps: 30
+  guidance_scale: 5.0
+  width: 1024
+  height: 1024
+  negative_prompt: >-
+    multiple people, duplicate person, duplicate face, cropped face, malformed face,
+    deformed eyes, text, watermark, low resolution
+
+generation:
+  num_images_per_prompt: 1
+  generator_device: cuda
+  output_format: png
+  seeds:
+    - 776
+    - 1776
+  seed_role: base_seed
+  identity_ordinal_origin: 0
+  effective_seed_formula: base_seed + identity_ordinal * 100000
+  effective_seeds_by_identity:
+    fei_0058: [776, 1776]
+    fei_0075: [100776, 101776]
+    fei_0092: [200776, 201776]
+    fei_0100: [300776, 301776]
+    fei_0115: [400776, 401776]
+    fei_0162: [500776, 501776]
+    fei_0168: [600776, 601776]
+    fei_0193: [700776, 701776]
+  pair_initial_latent_within_identity_and_base_seed_across_conditions_and_prompts: true
+  share_initial_latent_across_different_identities: false
+  no_best_of_selection: true
+  no_regeneration: true
+  prompts:
+    p0_easy: >-
+      a studio head-and-shoulders photograph of a person img, neutral expression,
+      front view, even soft lighting, plain gray background
+    p1_nuisance: >-
+      a candid head-and-shoulders photograph of a person img, three-quarter left
+      view, smiling, warm side lighting, indoor cafe background, face unobstructed
+  conditions:
+    - name: k1_full
+      global_identity: target
+      pixel_identity: target
+      reference_conditions: k1
+      repeat_exact_reference: false
+      start_merge_step: 10
+    - name: k4_diverse_full
+      global_identity: target
+      pixel_identity: target
+      reference_conditions: k4_diverse
+      repeat_exact_reference: false
+      start_merge_step: 10
+    - name: k4_repeat_full
+      global_identity: target
+      pixel_identity: target
+      reference_conditions: k4_repeat
+      repeat_exact_reference: true
+      start_merge_step: 10
+    - name: global_target_patch_donor
+      global_identity: target
+      pixel_identity: donor
+      global_reference_conditions: k1
+      pixel_reference_conditions: k1
+      start_merge_step: 10
+      out_of_distribution_intervention: true
+    - name: global_donor_patch_target
+      global_identity: donor
+      pixel_identity: target
+      global_reference_conditions: k1
+      pixel_reference_conditions: k1
+      start_merge_step: 10
+      out_of_distribution_intervention: true
+    - name: text_only
+      global_identity: target
+      pixel_identity: target
+      reference_conditions: k1
+      start_merge_step: 30
+      identity_fused_denoising_iterations: 0
+      note: PhotoMaker components remain loaded; this is not an unmodified base-SDXL control
+  assertions:
+    external_id_embedding_and_pixel_list_lengths_match: true
+    preserve_reference_order: true
+    prompt_contains_trigger_phrase_exactly_once: true
+    one_output_per_factorial_cell: true
+    initial_latent_hash_matches_within_identity_base_seed_across_all_conditions_and_prompts: true
+    no_output_hash_invariance_required_across_identities: true
+
+causal_interpretation:
+  allowed_contrasts:
+    reference_diversity_at_equal_k:
+      treatment: k4_diverse_full
+      control: k4_repeat_full
+    identical_signal_repetition:
+      treatment: k4_repeat_full
+      control: k1_full
+    native_identity_path:
+      treatment: k1_full
+      control: text_only
+    global_vs_patch_channel:
+      conditions:
+        - global_target_patch_donor
+        - global_donor_patch_target
+    prompt_nuisance:
+      treatment: p1_nuisance
+      control: p0_easy
+  cannot_localize:
+    - insightface_encoder_vs_qformer
+    - qformer_vs_fuse_module
+    - fuse_module_vs_unet_injection
+    - individual_denoising_step
+  absent_interventions:
+    - identity_scale_sweep
+    - start_merge_step_sweep
+    - internal_activation_ablation
+    - alternative_generator
+    - lvface_custom_mapper
+
+evaluation:
+  completion_gate:
+    require_primary_independent_recognizer: true
+    require_primary_recognizer_asset_lock_entry: true
+    primary_asset_lock_status: pinned
+    current_pilot_blocked_by_missing_sensitivity_evaluators: false
+    on_missing_lvface_primary_recognizer: fail_run_do_not_substitute_insightface
+  primary_identity_recognizer:
+    family: LVFace
+    model: LVFace-T_Glint360K
+    asset_name: lvface_t_glint360k
+    representation: official_final_embedding
+    status: pinned
+    independence_basis: PhotoMaker_V2_does_not_use_LVFace_for_conditioning_or_generation_loss
+    must_not_be_used_by_conditioner_or_generation_loss: true
+    forbid_intermediate_layer_or_e2_probe_as_evaluator: true
+  formal_confirmation_sensitivity_recognizers:
+    required_for_current_pilot: false
+    required_before_formal_generation_claim: true
+    families:
+      - AdaFace
+      - CurricularFace
+    status: future_asset_pin
+  secondary_conditioner_aligned_recognizer:
+    asset_name: insightface_buffalo_l_scrfd10g
+    recognition_filename: w600k_r50.onnx
+    role: secondary_diagnostic_only
+  real_query_template:
+    conditions:
+      - frontal_smile
+      - left_three_quarter
+      - right_three_quarter_expression
+    per_image_l2_normalize: true
+    aggregation: arithmetic_mean
+    post_aggregation_l2_normalize: true
+  primary_metrics:
+    - detection_aware_target_impostor_margin
+    - detection_aware_gallery_rank1
+    - target_similarity
+    - closest_impostor_similarity
+    - target_vs_donor_similarity
+    - global_patch_follow_rate
+    - prompt_nuisance_paired_margin_delta
+    - reference_diversity_paired_margin_delta
+    - repeated_reference_paired_margin_delta
+    - native_identity_path_paired_margin_delta
+    - face_detection_coverage
+    - evaluator_alignment_coverage
+  threshold_metrics:
+    enabled: false
+    enabling_requirement: frozen_separate_real_only_calibration_cohort
+    forbidden_calibration_sources:
+      - generated_images
+      - pilot_identities
+      - unrelated_published_threshold
+  failures:
+    keep_all_expected_rows: true
+    no_face_end_to_end_outcome: failure
+    multiple_face_end_to_end_outcome: failure
+    alignment_failure_end_to_end_outcome: failure
+    report_aligned_only_separately: true
+    select_most_target_like_face: forbidden
+  secondary_metrics:
+    - conditioner_aligned_cosine_similarity
+    - prompt_adherence_score
+    - input_copying_max_similarity
+    - across_seed_diversity
+    - multiple_face_rate
+    - image_quality_score
+  bootstrap:
+    unit: identity
+    paired: true
+    resamples: 1000
+    seed: 20260903
+    interval: percentile_95
+    aggregate_within_identity_before_resampling: true
+
+mean_face_contraction:
+  terminology: cohort_level_embedding_contraction_not_literal_pixel_mean
+  primary_conditions:
+    - k1_full
+    - k4_repeat_full
+    - k4_diverse_full
+  real_identity_centroid: normalized_heldout_query_template
+  generated_identity_centroid: normalized_mean_over_seeds_within_condition_and_prompt
+  inter_identity_spread: mean_pairwise_one_minus_cosine
+  primary_statistic: generated_spread_divided_by_real_spread
+  supporting_metrics:
+    - mean_impostor_cosine_shift
+    - target_impostor_margin
+    - gallery_rank1
+    - real_cohort_centroid_attraction
+    - centered_covariance_effective_rank
+  effective_rank_is_descriptive: true
+  maximum_rank_with_eight_identities: 7
+  prohibited_mechanistic_inference: pretraining_population_mean_caused_contraction
+
+human_evaluation:
+  required_for_perceptual_identity_statement: true
+  institutional_review_or_exemption_required: true
+  blind_condition_labels: true
+  randomize_trial_order: true
+  randomize_pair_side: true
+  minimum_raters_per_item: 5
+  approximate_attention_check_fraction: 0.10
+  freeze_exclusion_rules_before_collection: true
+  identity_task:
+    format: four_alternative_forced_choice_plus_none_and_unjudgeable
+    output_selection: all_192_outputs
+    gallery_sources:
+      - target
+      - frozen_donor
+      - deterministic_non_donor_1
+      - deterministic_non_donor_2
+    non_donor_offsets_in_frozen_identity_list: [2, 3]
+    gallery_images: all_three_heldout_queries
+    show_generator_references: false
+  prompt_task:
+    output_selection: all_192_outputs
+    separate_screen_from_identity_task: true
+    show_full_generated_image: true
+    checklist:
+      - viewpoint
+      - expression
+      - lighting_and_background
+      - single_person_face_unobstructed
+  paired_conditions:
+    - [k4_diverse_full, k4_repeat_full]
+    - [k4_repeat_full, k1_full]
+    - [global_target_patch_donor, global_donor_patch_target]
+    - [k1_full, text_only]
+  expected_paired_items: 128
+  paired_item_selection: all_four_contrasts_times_all_identities_prompts_and_seeds
+  paired_questions:
+    - identity_likeness
+    - prompt_adherence
+    - visual_quality
+  allow_tie_and_unjudgeable: true
+  report:
+    - win_tie_loss
+    - four_way_accuracy
+    - none_rate
+    - unjudgeable_rate
+    - inter_rater_agreement
+    - identity_clustered_interval
+  depicted_person_ratings: separate_exploratory_stratum_only
+
+fallbacks:
+  sentinel_before_factorial:
+    required: true
+    cover_both_prompts: true
+    cover_normal_conflict_and_text_only: true
+    verify_seed_replay: true
+    record_peak_cuda_memory: true
+    sentinel_outputs_replace_factorial_cells: false
+  cuda_out_of_memory:
+    primary_resolution: [1024, 1024]
+    fallback_resolution: [768, 768]
+    require_reproducible_oom_after_clean_worker_restart: true
+    create_new_run: true
+    restart_all_192_cells: true
+    pooling_resolutions: forbidden
+    choose_resolution_from_identity_metrics: forbidden
+  immutable_under_fallback:
+    - identities
+    - donor_mapping
+    - references
+    - queries
+    - conditions
+    - prompts
+    - seeds
+    - sampler
+    - steps
+    - guidance_scale
+  missing_lvface_primary_evaluator: fail_run_not_replace_with_conditioner_aligned_recognizer
+  missing_adaface_or_curricularface_sensitivity: does_not_block_exploratory_pilot
+  reference_or_output_failure: retain_status_and_denominator_no_reroll
+
+ethics:
+  identifiable_biometric_data: true
+  raw_generated_and_embedding_assets_git_ignored: true
+  public_image_release_by_default: false
+  require_license_and_institutional_review_before_display: true
+  infer_sensitive_attributes: forbidden
+  demographic_subgroup_claims: forbidden
+  provenance_fields_required:
+    - target_identity
+    - donor_identity
+    - reference_sample_ids
+    - query_sample_ids
+    - condition
+    - prompt_id
+    - identity_ordinal
+    - base_seed
+    - effective_seed
+    - initial_latent_sha256
+    - code_and_weight_hashes
+    - preprocessing_status
+    - generation_status
+    - evaluation_status
+
+outputs:
+  completed_run_is_immutable: true
+  fallback_creates_new_run: true
+  required_run_records:
+    - resolved_config
+    - asset_lock_snapshot
+    - executable_source_snapshot
+    - python_package_lock
+    - environment_and_gpu_metadata
+    - input_manifest_subset_56_rows
+    - output_manifest_192_rows
+    - input_and_output_hashes
+    - aggregate_metrics
+    - identity_level_metrics
+    - bootstrap_artifact
+    - human_assignment_and_rating_records_if_collected
+    - performance_record
+    - log
+    - completion_status
+  generated_images_location: git_ignored_run_directory
+
+claims:
+  allowed:
+    - native_identity_path_output_effect_for_eight_fixed_fei_identities
+    - relative_global_vs_patch_following_under_conflict
+    - diverse_vs_repeated_reference_effect
+    - p1_vs_p0_prompt_nuisance_effect
+    - evaluator_agreement_or_disagreement
+    - cohort_level_embedding_contraction_diagnostic
+  forbidden:
+    - external_confirmation
+    - generalization_beyond_fixed_fei_identities
+    - identity_layer_or_final_layer_erasure
+    - positive_reinterpretation_of_e2
+    - exact_internal_adapter_failure_localization
+    - literal_mean_face_or_pretraining_mean_mechanism
+    - identity_success_from_reused_evaluator_alone
+    - demographic_fairness
+    - authorization_for_custom_mapper_training

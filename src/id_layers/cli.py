@@ -4,6 +4,7 @@ import argparse
 
 from .config import resolve_experiment_config
 from .experiment import run_experiment
+from .probe_experiment import run_probe_experiment
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,7 +17,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     arguments = build_parser().parse_args()
     config = resolve_experiment_config(arguments.config)
-    run_dir = run_experiment(config, run_id=arguments.run_id)
+    runner = (
+        run_probe_experiment
+        if config["experiment"]["kind"] == "equal_capacity_probes"
+        else run_experiment
+    )
+    run_dir = runner(config, run_id=arguments.run_id)
     print(run_dir)
 
 

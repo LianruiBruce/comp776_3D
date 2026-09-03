@@ -13,6 +13,24 @@ datasets:
       - filename: frontalimages_manuallyaligned_part2.zip
         url: https://fei.edu.br/~cet/frontalimages_manuallyaligned_part2.zip
         sha256: b3f8c9c170d5a31bb04ac790ede5dbaafbef7a780077cdcf6e10ebddd22fd57c
+  fei_full:
+    homepage: https://fei.edu.br/~cet/facedatabase.html
+    license_id: FEI-research-only
+    expected_identities: 200
+    expected_conditions_per_identity: 14
+    archives:
+      - filename: originalimages_part1.zip
+        url: https://fei.edu.br/~cet/originalimages_part1.zip
+        sha256: 1d0b0ebe94278a5677edc450251f91450dadb821d9774edc111ad1be0e7475ed
+      - filename: originalimages_part2.zip
+        url: https://fei.edu.br/~cet/originalimages_part2.zip
+        sha256: 993c2a48ac38c64824c619cbcdb0700598786aa2fa20a76f4b199457c8662e69
+      - filename: originalimages_part3.zip
+        url: https://fei.edu.br/~cet/originalimages_part3.zip
+        sha256: 65d282b338001e4ece78944b751d5d78d94eddfacf2c734cf8530bcd6435e252
+      - filename: originalimages_part4.zip
+        url: https://fei.edu.br/~cet/originalimages_part4.zip
+        sha256: dd82ed2b475781dd4e829fb964923eb3a69e6f413f0e05ae694e65fce9fbe44f
 
 models:
   lvface_t_glint360k:
@@ -24,3 +42,46 @@ models:
     weight_filename: LVFace-T_Glint360K/LVFace-T_Glint360K.pt
     weight_sha256: 1f5b73d6f7a18e431d95d2ccabb4d00dca2a6f2004eb74de2c5788d386cb59ec
     weight_license_id: LVFace-non-commercial-research
+  insightface_buffalo_l_scrfd10g:
+    code_repository: https://github.com/deepinsight/insightface
+    code_revision: 7fadd420c2351d0ffa8cac403421c1a3ed733365
+    code_license: MIT
+    archive_url: https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
+    archive_filename: buffalo_l.zip
+    archive_sha256: 80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f
+    detector_filename: det_10g.onnx
+    detector_sha256: 5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91
+    recognition_filename: w600k_r50.onnx
+    recognition_sha256: 4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43
+    model_license_id: InsightFace-non-commercial-research
+  photomaker_v2:
+    code_repository: https://github.com/TencentARC/PhotoMaker.git
+    code_revision: 060b4fcb10b76a4554edf565d6106b7e36c968f0
+    code_license: Apache-2.0
+    weight_repository: TencentARC/PhotoMaker-V2
+    weight_revision: f5a1e5155dc02166253fa7e29d13519f5ba22eac
+    weight_filename: photomaker-v2.bin
+    weight_sha256: 0eeac57d7e09b95cee670a18e0d939ff303dd6f76d317c950bf584c6c9bdb8f5
+    weight_license_id: Apache-2.0-with-InsightFace-research-restriction
+  realvisxl_v4_fp16:
+    repository: SG161222/RealVisXL_V4.0
+    revision: 26dfe44930964cd70d0a817b6d1cc945c130e38d
+    license_id: CreativeML-OpenRAIL++
+    allow_patterns:
+      - model_index.json
+      - scheduler/*
+      - text_encoder/config.json
+      - text_encoder/model.fp16.safetensors
+      - text_encoder_2/config.json
+      - text_encoder_2/model.fp16.safetensors
+      - tokenizer/*
+      - tokenizer_2/*
+      - unet/config.json
+      - unet/diffusion_pytorch_model.fp16.safetensors
+      - vae/config.json
+      - vae/diffusion_pytorch_model.fp16.safetensors
+    weight_sha256:
+      text_encoder/model.fp16.safetensors: 261b2e72bd3b76723eff6f9857c23cd8f8de6a12129d5351b56271b9202ac0aa
+      text_encoder_2/model.fp16.safetensors: de815ea750a4ceeeff4452c6023f894fa66db5db6e7053e589be3104922dd8e2
+      unet/diffusion_pytorch_model.fp16.safetensors: dc2027ec2344f8554ba3a691130f41707b23bb4822db44463b5434343c856003
+      vae/diffusion_pytorch_model.fp16.safetensors: 6353737672c94b96174cb590f711eac6edf2fcce5b6e91aa9d73c5adc589ee48

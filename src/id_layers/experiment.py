@@ -12,11 +12,14 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
 from .config import load_asset_lock, repository_root
-from .data import FaceManifestDataset, prepare_fei_manifest
+from .data import FaceManifestDataset, prepare_dataset_manifest
 from .metrics import (
+    bootstrap_selected_template_tar,
     evaluate_all_layers,
     evaluate_frozen_operating_points,
+    evaluate_frozen_selected_layers_by_condition,
     evaluate_selected_layers,
+    evaluate_selected_layers_by_condition,
     select_layers,
 )
 from .modeling import (
@@ -56,19 +59,27 @@ def _plot_layer_curves(metrics, run_dir: Path) -> list[str]:
     plot_dir = run_dir / "plots"
     plot_dir.mkdir(parents=True, exist_ok=True)
     paths: list[str] = []
+    separation_metric = (
+        "template_d_prime" if "template_d_prime" in metrics else "d_prime"
+    )
+    retrieval_metric = "template_rank1" if "template_rank1" in metrics else "loo_top1"
     for split in metrics["split"].unique():
         subset = metrics[metrics["split"] == split]
         figure, axes = plt.subplots(1, 2, figsize=(11, 4.2))
         for representation, group in subset.groupby("representation"):
             group = group.sort_values("layer")
-            axes[0].plot(group["layer"], group["d_prime"], marker="o", label=representation)
-            axes[1].plot(group["layer"], group["loo_top1"], marker="o", label=representation)
+            axes[0].plot(
+                group["layer"], group[separation_metric], marker="o", label=representation
+            )
+            axes[1].plot(
+                group["layer"], group[retrieval_metric], marker="o", label=representation
+            )
         axes[0].set_title(f"{split}: identity separation")
         axes[0].set_xlabel("Transformer block")
-        axes[0].set_ylabel("d-prime")
+        axes[0].set_ylabel(separation_metric.replace("_", " "))
         axes[1].set_title(f"{split}: leave-one-out retrieval")
         axes[1].set_xlabel("Transformer block")
-        axes[1].set_ylabel("Top-1 accuracy")
+        axes[1].set_ylabel(retrieval_metric.replace("_", " "))
         axes[1].set_ylim(0.0, 1.02)
         for axis in axes:
             axis.grid(alpha=0.25)
@@ -109,13 +120,23 @@ def run_experiment(config: dict[str, Any], run_id: str | None = None) -> Path:
         write_json(run_dir / "source_snapshot_manifest.json", source_manifest)
         asset_lock = load_asset_lock(config)
         write_yaml(run_dir / "assets.lock.resolved.yaml", asset_lock)
-        logger.info("Preparing FEI manifest")
-        manifest = prepare_fei_manifest(
-            config["data"], asset_lock["datasets"][config["data"]["name"]], seed
-        )
-        manifest.drop(columns=["absolute_path"]).to_csv(
+        logger.info("Preparing dataset manifest and preprocessing coverage")
+        full_manifest = prepare_dataset_manifest(config["data"], asset_lock, seed)
+        private_columns = [
+            column
+            for column in ["absolute_path", "source_absolute_path"]
+            if column in full_manifest
+        ]
+        full_manifest.drop(columns=private_columns).to_csv(
             run_dir / "dataset_manifest.csv", index=False
         )
+        full_manifest.drop(columns=private_columns).to_csv(
+            run_dir / "preprocess_coverage.csv", index=False
+        )
+        usable_mask = full_manifest["usable_for_model"].astype(bool).to_numpy()
+        manifest = full_manifest.loc[usable_mask].reset_index(drop=True)
+        if manifest.empty:
+            raise RuntimeError("No samples passed detection/alignment preprocessing")
 
         dataset = FaceManifestDataset(manifest, config["data"]["preprocessing"])
         generator = torch.Generator().manual_seed(seed)
@@ -165,10 +186,14 @@ def run_experiment(config: dict[str, Any], run_id: str | None = None) -> Path:
             list(config["evaluation"]["profiling_splits"]),
             far_targets,
         )
+        selection_tiebreak_metrics = list(
+            config["evaluation"].get("selection_tiebreak_metrics", [])
+        )
         preliminary_selection = select_layers(
             profile_metrics,
             config["evaluation"]["selection_split"],
             config["evaluation"]["selection_metric"],
+            selection_tiebreak_metrics,
         )
         final_metrics = evaluate_selected_layers(
             extraction.embeddings,
@@ -187,6 +212,7 @@ def run_experiment(config: dict[str, Any], run_id: str | None = None) -> Path:
             metrics,
             config["evaluation"]["selection_split"],
             config["evaluation"]["selection_metric"],
+            selection_tiebreak_metrics,
         )
         write_json(run_dir / "selection.json", selection)
         operating_points = evaluate_frozen_operating_points(
@@ -198,6 +224,78 @@ def run_experiment(config: dict[str, Any], run_id: str | None = None) -> Path:
             far_targets,
         )
         write_json(run_dir / "frozen_operating_points.json", operating_points)
+        condition_metrics_path = None
+        bootstrap_path = None
+        if "protocol_role" in manifest:
+            condition_splits = list(
+                config["evaluation"].get(
+                    "condition_splits",
+                    [
+                        config["evaluation"]["selection_split"],
+                        config["evaluation"]["final_evaluation_split"],
+                    ],
+                )
+            )
+            condition_metrics = evaluate_selected_layers_by_condition(
+                extraction.embeddings,
+                manifest,
+                selection,
+                condition_splits,
+                far_targets,
+            )
+            coverage = (
+                full_manifest[full_manifest["protocol_role"] == "query"]
+                .groupby(["split", "condition"], as_index=False)
+                .agg(
+                    source_query_count=("sample_id", "size"),
+                    usable_query_count=("usable_for_model", "sum"),
+                )
+                .rename(columns={"condition": "query_condition"})
+            )
+            coverage["query_coverage"] = (
+                coverage["usable_query_count"] / coverage["source_query_count"]
+            )
+            condition_metrics = condition_metrics.merge(
+                coverage, on=["split", "query_condition"], how="left", validate="many_to_one"
+            )
+            frozen_condition_metrics = evaluate_frozen_selected_layers_by_condition(
+                extraction.embeddings,
+                manifest,
+                selection,
+                config["evaluation"]["threshold_calibration_split"],
+                config["evaluation"]["final_evaluation_split"],
+                far_targets,
+            )
+            frozen_wide = frozen_condition_metrics.pivot(
+                index=["split", "representation", "layer", "query_condition"],
+                columns="target_far",
+                values=["frozen_threshold", "frozen_observed_far", "frozen_tar"],
+            )
+            frozen_wide.columns = [
+                f"{metric}_at_target_far_{target:g}" for metric, target in frozen_wide.columns
+            ]
+            frozen_wide = frozen_wide.reset_index()
+            condition_metrics = condition_metrics.merge(
+                frozen_wide,
+                on=["split", "representation", "layer", "query_condition"],
+                how="left",
+                validate="one_to_one",
+            )
+            condition_metrics_path = "metrics_by_condition.csv"
+            condition_metrics.to_csv(run_dir / condition_metrics_path, index=False)
+
+            bootstrap = bootstrap_selected_template_tar(
+                extraction.embeddings,
+                manifest,
+                selection,
+                config["evaluation"]["threshold_calibration_split"],
+                config["evaluation"]["final_evaluation_split"],
+                far_targets,
+                int(config["evaluation"].get("bootstrap_resamples", 1000)),
+                int(config["evaluation"].get("bootstrap_seed", seed)),
+            )
+            bootstrap_path = "bootstrap_intervals.csv"
+            bootstrap.to_csv(run_dir / bootstrap_path, index=False)
         plot_paths = _plot_layer_curves(metrics, run_dir)
 
         if bool(experiment_config["save_embeddings"]):
@@ -212,8 +310,11 @@ def run_experiment(config: dict[str, Any], run_id: str | None = None) -> Path:
             "run_id": run_id,
             "dataset": {
                 "name": config["data"]["name"],
-                "samples": len(manifest),
-                "identities": int(manifest["identity_id"].nunique()),
+                "source_samples": len(full_manifest),
+                "usable_samples": len(manifest),
+                "coverage": float(len(manifest) / len(full_manifest)),
+                "source_identities": int(full_manifest["identity_id"].nunique()),
+                "usable_identities": int(manifest["identity_id"].nunique()),
                 "split_identity_counts": manifest.groupby("split")["identity_id"]
                 .nunique()
                 .to_dict(),
@@ -227,7 +328,11 @@ def run_experiment(config: dict[str, Any], run_id: str | None = None) -> Path:
             "frozen_operating_points": operating_points,
             "performance": extraction.metadata,
             "plots": plot_paths,
-            "interpretation_scope": "pipeline smoke; neutral-versus-smile only",
+            "metrics_by_condition": condition_metrics_path,
+            "bootstrap_intervals": bootstrap_path,
+            "interpretation_scope": experiment_config.get(
+                "interpretation_scope", "pipeline smoke; neutral-versus-smile only"
+            ),
         }
         write_json(run_dir / "summary.json", summary)
         write_json(run_dir / "status.json", {"state": "complete", "run_id": run_id})

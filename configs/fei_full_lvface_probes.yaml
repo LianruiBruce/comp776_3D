@@ -1,0 +1,118 @@
+schema_version: 1
+
+experiment:
+  name: fei_full_lvface_equal_capacity_probes
+  kind: equal_capacity_probes
+  protocol_stage: E2
+  seed: 20260902
+  deterministic: true
+  verify_full_extraction_repeat: true
+  output_root: artifacts/runs
+  save_embeddings: true
+  interpretation_scope: FEI internal development evidence only; equal-capacity mean-pooled metric readout, not a causal identity-layer claim
+
+assets:
+  lock_file: configs/assets.lock.yaml
+
+data:
+  name: fei_full
+  asset_name: fei_full
+  type: fei_full
+  identity_split_seed: 20260902
+  archive_root: data/raw/fei
+  source_root: data/processed/fei_full/source
+  processed_root: data/processed/fei_full/aligned
+  manifest_path: data/manifests/fei_full_seed20260902.csv
+  expected_identities: 200
+  expected_conditions_per_identity: 14
+  reuse_preprocessing: true
+  split_identity_counts:
+    train: 100
+    dev: 50
+    internal_eval: 50
+  preprocessing:
+    alignment: insightface_arcface_five_point
+    detector_asset_name: insightface_buffalo_l_scrfd10g
+    insightface_checkout_path: third_party/InsightFace
+    detector_model_name: buffalo_l
+    detector_cache_root: artifacts/cache/models/insightface
+    detector_model_path: artifacts/cache/models/insightface/models/buffalo_l/det_10g.onnx
+    providers: [CUDAExecutionProvider, CPUExecutionProvider]
+    require_cuda: true
+    ctx_id: 0
+    detector_input_size: [640, 640]
+    detection_threshold: 0.5
+    output_size: 112
+    image_size: 112
+    resize_policy: none_after_alignment
+    interpolation: bilinear
+    normalization_mean: [0.5, 0.5, 0.5]
+    normalization_std: [0.5, 0.5, 0.5]
+
+model:
+  name: lvface_t_glint360k
+  architecture: vit_t
+  third_party_path: third_party/LVFace
+  weights_path: artifacts/cache/models/LVFace/LVFace-T_Glint360K/LVFace-T_Glint360K.pt
+  device: cuda
+  batch_size: 64
+  num_workers: 0
+  representations:
+    - probe_ln0_mean
+    - token_mean
+    - head_projected
+
+probe:
+  name: equal_capacity_supervised_metric_readout
+  input_representation: probe_ln0_mean
+  input_dim: 256
+  output_dim: 512
+  layer_norm_eps: 1.0e-5
+  projection_bias: false
+  seeds: [776, 1776, 2776, 3776, 4776]
+  epochs: 120
+  batch_size: 128
+  precision: float32
+  augmentation: none
+  early_stopping: false
+  optimizer:
+    name: adamw_polynomial
+    learning_rate: 0.001
+    betas: [0.9, 0.999]
+    weight_decay: 0.1
+    polynomial_power: 1.0
+    final_learning_rate: 0.0
+  loss:
+    name: cosface
+    scale: 64.0
+    margin: 0.4
+  dev_folds: 5
+  dev_fold_seed: 20260902
+  verify_repeat:
+    enabled: true
+    layer: 1
+    seed: 776
+  controls:
+    untrained_projection: true
+    shuffled_labels:
+      enabled: true
+      seeds: [776]
+    gaussian_features:
+      enabled: true
+      seeds: [776]
+  save_checkpoints: true
+
+evaluation:
+  profiling_splits: [dev]
+  selection_split: dev
+  selection_metric: crossfit_template_tar_at_far_0.01_mean
+  selection_tiebreak_metrics:
+    - template_d_prime_mean
+    - template_roc_auc_mean
+  threshold_calibration_split: dev
+  final_evaluation_split: internal_eval
+  far_targets: [0.01]
+  condition_splits: [internal_eval]
+  bootstrap_resamples: 1000
+  bootstrap_seed: 20260902
+
