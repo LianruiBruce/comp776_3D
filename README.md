@@ -1,6 +1,6 @@
 # Identity Layers Lab
 
-这是一个研究“多张参考自拍如何保留人物身份”的可复现计算机视觉项目。第一阶段先分析人脸识别 ViT：不同 Transformer 层在表情等干扰发生变化时，是否仍然保留可区分的身份信息；后续再把经过验证的多层、多参考表示接入图像生成模型。
+这是一个研究“怎样让参考自拍驱动的生成照片在人类看来更像本人”的可复现计算机视觉项目。人脸识别 ViT 的逐层分析用于诊断身份信息是否可访问；生成阶段进一步区分参考采样、身份编码、条件注入和扩散渲染四类瓶颈，并以盲法人评作为感知 likeness 的主要终点。
 
 当前已经跑通四条链路：FEI 手工对齐子集 smoke、FEI 原始 2,800 张图像的 SCRFD 五点对齐与 LVFace-T 全层 E1、五随机种子的 E2 等容量监督度量读出，以及 PhotoMaker V2 多参考身份生成诊断。代码已在 NVIDIA RTX 4080、Python 3.11、PyTorch 2.8.0+cu128 上验证。
 
@@ -18,11 +18,13 @@
 | E2 结果 | dev 选择 block 11；相对 matched block 12 的内部 end-to-end TAR 差 +0.00067，95% CI [0, .002]，H2 gate 未通过 |
 | E2 性能 | 探针与对照训练约 540 秒；探针阶段峰值 CUDA allocation 约 69.7 MiB |
 | 生成诊断 | PhotoMaker V2 + RealVisXL V4；8 个 FEI internal-eval 身份 × 6 条件 × 2 prompts × 2 seeds，共 192 图 |
-| 生成状态 | 192/192 成功且均检测到单张人脸；独立 LVFace 自动评估完成，盲化人类评价页面已构建但尚未收集评分 |
+| 生成状态 | 192/192 成功且均检测到单张人脸；独立 LVFace 自动评估与 v2 人评均完成：10 位评分者、96 个配对、480 次判断；P0/P1 无明确优势，P3 未决 |
 
 E1 中 raw token mean 的 block 11 优于 block 12；但 E2 给两层相同训练读出后，内部差异几乎消失且不满足预注册判据。因此当前证据不支持“最终层丢失身份”或存在一个确定的“身份层”。完整结果见 [E2 报告](reports/E2_FEI_FULL_LVFACE_PROBES.md)、[E1 报告](reports/E1_FEI_FULL_LVFACE_T.md)；早期 smoke 见 [reports/SMOKE_FEI_LVFACE_T.md](reports/SMOKE_FEI_LVFACE_T.md)。
 
-正式生成运行位于 `artifacts/runs/20260903T050000Z_photomaker_v2_generation_pilot`。自动指标显示原生身份条件明显不同于 text-only，且冲突实验中输出主要跟随全局 InsightFace 身份向量；四张多样参考相对单张或重复参考只有小幅自动相似度增益。该实验只有 8 个已用于开发的 FEI 身份，不能作为外部确认；自动识别分数也不能回答“人看起来是否更像本人”。人工结论必须等待盲评完成，详见 [生成诊断报告](reports/GENERATION_IDENTITY_PILOT.md)。
+正式生成运行位于 `artifacts/runs/20260903T050000Z_photomaker_v2_generation_pilot`。自动指标显示原生身份条件明显不同于 text-only，且冲突实验中输出主要跟随全局 InsightFace 身份向量；四张多样参考相对单张或重复参考只有小幅自动相似度增益。v2 人评已完成，P0/P1 不支持明确的多参考感知收益，P3 区间很宽且无法判断比例高。该实验只有 8 个已用于开发的 FEI 身份，不能作为外部确认，也没有直接测量生成图相对真实照片的人类 likeness 缺口。详见 [生成诊断报告](E:/comp776_3D/reports/GENERATION_IDENTITY_PILOT.md)。
+
+第一次接触 CV 可先读 [中文研究计划：从真实自拍到生成肖像](E:/comp776_3D/docs/RESEARCH_PLAN_ZH.md)，其中说明已有证据、基础术语、最小实验、统计、预算和论文完成标准。当前优先级是建立新身份的真实照片参照与本人/陌生人分开的评分流程，先测量 likeness 缺口，再选择有证据的干预。旧 [身份保真实验路线](E:/comp776_3D/docs/IDENTITY_FIDELITY_EXPERIMENT_ROADMAP.md) 保留为历史文献审计；已完成的人评见 [v2 协议与结果](E:/comp776_3D/docs/HUMAN_IDENTITY_LIKENESS_V2.md)。
 
 ## 仓库结构与 Git 规则
 
@@ -258,20 +260,29 @@ $run = "artifacts\runs\RUN_ID"
 
 评估必须保留检测失败并计入分母。`lvface_independent` 是未被 PhotoMaker 使用的主要自动身份评价器；PhotoMaker 自己依赖的 InsightFace 仅作为 `insightface_conditioner` 二级复用诊断。正式运行 `20260903T050000Z_photomaker_v2_generation_pilot` 的第一次评估因验证器错误保留在 `evaluation/`；清理后复评的当前入口为 `evaluation_v3/` 和 `analysis_v3/`。首次成功的 `evaluation_v2/` 与 v3 的六个核心产物 SHA256 全部一致。不要把失败目录当作结果，也不要手工覆盖已完成目录。
 
-自动相似度不等同于“人看起来像本人”。以下命令为一个新完整运行构建离线 identity-likeness master 包；公开页面与研究者私有的 `answer_key.json` 必须严格分开：
+自动相似度不等同于“人看起来像本人”。v1 master 包保留在 `human_eval/` 作为历史工程产物；当前实验使用更精简的 v2，只比较与研究问题直接相关的 P0、P1、P3，共 96 个唯一 pair。它生成 10 份各 48 题的匿名表单，使每个 pair 恰好由 5 名不同参与者评分。详细设计见 [H1 人类感知身份相似度实验](docs/HUMAN_IDENTITY_LIKENESS_V2.md)。
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\build_human_eval.py --manifest data\manifests\fei_full_seed20260902.csv --results "$run\generation_manifest.jsonl" --output "$run\human_eval\participant" --seed 20260903 --answer-key "$run\human_eval\private\answer_key.json"
+.\.venv\Scripts\python.exe scripts\build_grouped_human_eval.py `
+  --run-dir $run `
+  --manifest data\manifests\fei_full_seed20260902.csv `
+  --output "$run\human_eval_v2" `
+  --seed 20260904
 ```
 
-当前 v1 master 页面用于验证盲化与解盲链路，要求一个 response 完成全部 352 项。它尚未实现冻结协议要求的平衡不完全区组、attention checks 和独立 prompt/quality 屏幕，因此不要直接用于正式招募。取得适用的机构审查/豁免、补齐这些设计并冻结排除规则后，每个 item 至少收集 5 份独立评分；response JSON 放入 Git 忽略的 `human_eval/responses/`，再统一分析：
+将 `participant/` 下的 `A01–A05`、`B01–B05` 分别分配给 10 名参与者。HTML 依赖同目录下的 `media/`，移动或分享时要保持两者的相对位置；每人只完成指定的一份表单。下载的 response JSON 放入 Git 忽略的 `human_eval_v2/responses/`，然后统一分析：
+
+当前正式包的第一份页面是 `artifacts/runs/20260903T050000Z_photomaker_v2_generation_pilot/human_eval_v2/participant/A01.html`。
 
 ```powershell
-$responseFiles = (Get-ChildItem "$run\human_eval\responses\*.json").FullName
-.\.venv\Scripts\python.exe scripts\analyze_human_eval.py --answer-key "$run\human_eval\private\answer_key.json" --responses $responseFiles --output "$run\human_eval\analysis.json"
+$responseFiles = (Get-ChildItem "$run\human_eval_v2\responses\*.json").FullName
+.\.venv\Scripts\python.exe scripts\analyze_grouped_human_eval.py `
+  --answer-key "$run\human_eval_v2\private\answer_key.json" `
+  --responses $responseFiles `
+  --output "$run\human_eval_v2\analysis\analysis.json"
 ```
 
-在 Linux 上将 Python 路径换为 `.venv/bin/python`、路径分隔符换为 `/`；response 文件可用 shell glob。当前正式运行只构建了 v1 identity-likeness master 包，尚未形成正式分配版本，也未采集真实评分，因此不能报告人类偏好、感知身份准确率或“哪种条件更像本人”。
+页面只问身份相似度，允许 A、B、相同和无法判断；不混入 4-AFC、画质、prompt 或 text-only 题。公开页面与 `private/answer_key.json` 必须分开保存。在 Linux 上将 Python 路径换为 `.venv/bin/python`、路径分隔符换为 `/`；response 文件可用 shell glob。没有收齐真实评分前，不能报告人类偏好或“哪种条件更像本人”。
 
 ## 6. 测试与代码检查
 
@@ -343,6 +354,18 @@ git status --short
 
 ## 研究边界与下一步
 
-FEI-full E2 已显示 matched block 11 与 block 12 在内部 end-to-end TAR 上没有可靠差异，官方最终头仍是更强的 operational baseline。PhotoMaker V2 的 8 身份探索性生成诊断已经完成自动部分，但它没有替代原定 gate，也没有给出人类感知结论。下一步应完成合规盲评，同时冻结当前表示选择，在 Yale B+ 与 CVLFace ViT-B 上做不调参确认；若要训练自定义 mapper，仍须先通过外部表示与多参考 gate。
+FEI-full E2 没有支持可靠的中间层优势。PhotoMaker V2 的八身份生成与 v2 人评均已完成：10 名不同评者完成 480 条展示试次，多参考的人类 likeness 收益未得到支持。该 pilot 已冻结，不继续追加评分或调参寻找显著结果。
 
-下一轮可执行设计见 [docs/EXPERIMENT_DESIGN_V1.md](docs/EXPERIMENT_DESIGN_V1.md)；总体假设、数据泄漏规则和生成阶段评估要求见 [docs/EXPERIMENT_PROTOCOL.md](docs/EXPERIMENT_PROTOCOL.md)。协作状态以 [AGENTS.md](AGENTS.md) 为准。
+下一轮主路线以面向初学者的 [中文研究计划](docs/RESEARCH_PLAN_ZH.md) 为准。新增自动工作、独立识别器、VAE 检查、第二模型验证与功效模拟见 [中文自动研究报告](docs/AUTO_RESEARCH_REPORT_ZH.md)；数据格式见 [输入说明](docs/AUTO_RESEARCH_INPUTS_ZH.md)。旧路线图与早期逐层设计保留作历史记录，协作状态以 [AGENTS.md](AGENTS.md) 为准。
+
+自动研究使用独立环境 `.venv-auto`，PuLID 使用 `.venv-pulid`，不升级原 `.venv`：
+
+```powershell
+.\.venv-auto\Scripts\python.exe scripts/run_auto_research.py check
+.\.venv-auto\Scripts\python.exe scripts/run_auto_research.py resume
+.\.venv-auto\Scripts\python.exe scripts/run_auto_research.py summarize
+```
+
+执行配置在 `configs/auto_research.yaml`。GPU 串行，上限四小时；新增下载上限 30 GB。所有新结果存放于独立的 `artifacts/runs/20260905_auto_research/`，历史运行只读。自动分数与模拟响应均不能代替本人或陌生人的盲评。
+
+2026-09-05 已完成 192 图补充诊断、56 图 VAE 重建、PhotoMaker 48 图、PuLID 16 图 smoke 后完整 48 图，以及数据/评分工具与功效模拟。累计下载约 3.41 GB、GPU 工作时间约 34.53 分钟；旧运行 1,337 个文件 hash 不变。219 项 CPU 测试与 Ruff 通过，实际环境的 `pip check` 声明例外已在报告中记录。PuLID 的自动身份分数较高，但尚无新本人/陌生人人评证明它改善感知 likeness。

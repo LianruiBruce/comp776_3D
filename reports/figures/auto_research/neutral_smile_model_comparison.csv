@@ -1,0 +1,17 @@
+status,metric,treatment,control,expected_pair_count,valid_pair_count,identity_count,valid_identity_count,estimate,ci95_lower,ci95_upper,evaluator,model
+complete,mouth_smile_mean,smile,neutral,24,24,12,12,0.2577602676728929,0.1485294183759161,0.3704597582088324,,PhotoMaker V2
+complete,jaw_open,smile,neutral,24,24,12,12,0.0007502330893961,-0.0056919087116208,0.0091953745581728,,PhotoMaker V2
+complete,target_similarity,smile,neutral,24,24,12,12,-0.001350519575,-0.0094117157411458,0.0065797688343749,adaface,PhotoMaker V2
+complete,target_impostor_margin,smile,neutral,24,24,12,12,0.000368931625,-0.0127371620540624,0.0126146462276041,adaface,PhotoMaker V2
+complete,end_to_end_rank1,smile,neutral,24,24,12,12,0.0,0.0,0.0,adaface,PhotoMaker V2
+complete,target_similarity,smile,neutral,24,24,12,12,0.0018939202041666,-0.0174981221564583,0.0196560174257291,lvface,PhotoMaker V2
+complete,target_impostor_margin,smile,neutral,24,24,12,12,0.0035785256541666,-0.0227922560884374,0.0316466630019791,lvface,PhotoMaker V2
+complete,end_to_end_rank1,smile,neutral,24,24,12,12,0.0,0.0,0.0,lvface,PhotoMaker V2
+complete,mouth_smile_mean,smile,neutral,24,24,12,12,0.7439478220777952,0.6860973482857579,0.7891770444751728,,PuLID v1.1
+complete,jaw_open,smile,neutral,24,24,12,12,0.0416884177684551,0.0203465505173274,0.0690104915673145,,PuLID v1.1
+complete,target_similarity,smile,neutral,24,24,12,12,-0.0303104743291666,-0.0397387630399999,-0.0205430421997916,adaface,PuLID v1.1
+complete,target_impostor_margin,smile,neutral,24,24,12,12,-0.0273340052541666,-0.0405328276533333,-0.0157827345329166,adaface,PuLID v1.1
+complete,end_to_end_rank1,smile,neutral,24,24,12,12,0.0,0.0,0.0,adaface,PuLID v1.1
+complete,target_similarity,smile,neutral,24,24,12,12,-0.052175611275,-0.0646031598329166,-0.0390698857898958,lvface,PuLID v1.1
+complete,target_impostor_margin,smile,neutral,24,24,12,12,-0.0517948431291666,-0.0669467731923958,-0.0370218715021875,lvface,PuLID v1.1
+complete,end_to_end_rank1,smile,neutral,24,24,12,12,0.0,0.0,0.0,lvface,PuLID v1.1

@@ -4,7 +4,7 @@
 
 - 正式运行：`artifacts/runs/20260903T050000Z_photomaker_v2_generation_pilot`
 - 正式自动评估：`evaluation_v3/status.json` 为 `complete`，汇总分析 `analysis_v3/status.json` 为 `complete`；正式矩阵生成并评估 `192/192`，无生成失败、无人脸或多脸输出。
-- 当前总状态：`automatic_evaluation_complete_human_pending`。盲法人类评价包已生成，但尚未收集真实评分。
+- 当前研究状态：自动评估和 v2 盲法人类评价均已完成；run 根状态文件仍保留生成阶段写入的 `automatic_evaluation_complete_human_pending`，正式人评结果位于 `human_eval_v2/analysis/analysis.json`。
 - 研究范围：8 个已在项目开发中接触过的 FEI `internal_eval` 身份上的探索性输出诊断；不是外部确认、SOTA 比较或对总体人群的推断。
 
 本实验得到四个主要自动指标结论：
@@ -13,6 +13,8 @@
 2. **“能分到正确身份”不等于“细节上像本人”。** K=1、K=4 diverse 和 K=4 repeat 的 8-way Rank-1 都是 `1.0`，但独立 LVFace 目标余弦仅为 `0.5613–0.5743`；真实 K=1 参考图对未参与生成的真实查询模板为 `0.9132`。生成结果保留了足以击败 7 个 impostor 的身份方向，但离真实自拍身份簇仍很远。这与“看得出大概是谁、却不像本人”的现象一致，但尚不能替代人类感知证据。
 3. **冲突干预中，512-D global face embedding 明显主导 CLIP patch 图像通路。** LVFace 判定输出跟随 global 身份 `60/64=93.75%`，复用的 InsightFace 判定为 `63/64=98.44%`。这是相对通路影响的证据，不等于 global embedding 已包含人类判断相似度所需的全部细节。
 4. **多张且多样的参考图只有小幅自动指标增益，尚不足以证明人眼更像。** K=4 diverse 相对 K=1 的 LVFace 目标相似度点估计为 `+0.013093`，但 95% 区间跨零；相对 K=4 repeat 为 `+0.013894`，目标相似度区间刚好高于零，但 target-impostor margin 的区间仍跨零，Rank-1 完全不变。
+
+v2 人评进一步表明：P0（diverse K=4 对 K=1）为 `0.47969 [0.38698, 0.57083]`，P1（diverse K=4 对 repeated K=4）为 `0.50573 [0.43880, 0.58256]`，均未显示可检测的多参考感知收益。P3（global-target 对 patch-target）为 `0.38385 [0.13906, 0.66615]`；可判断票偏向 patch-target，但 69/160 无法判断且区间跨 0.5。因此自动 recognizer 的 global-following 与人类可能使用 patch/local cues 之间存在值得外部确认的张力，但本 pilot 不能判定哪个通道普遍主导人类 likeness。
 
 此外，三种正常身份条件的 LVFace 身份间几何只有真实查询模板的 `90.19%–91.33%`，即约 `8.67%–9.81%` 的 between-identity contraction。该结果只说明生成身份在嵌入空间中更难区分；它**不支持**“输出被拉向这个真实 cohort 的均值”，更不能证明预训练人口均值或某个 ViT layer 导致了 mean face。
 
@@ -214,27 +216,33 @@ Text-only 的 contraction ratio 为 `0.462417`，说明相同 prompt/base-model 
 
 因此，本实验不能声称 literal mean-face attraction，更不能从 8 个身份的几何收缩反推训练集人口均值、预训练数据偏差或最终 ViT layer 的因果机制。
 
-## 人类评价：identity-likeness 工程包已就绪，正式收集尚未开始
+## 人类评价：identity-likeness v2 已完成
 
-匿名 identity-likeness master 包位于 `human_eval/participant/index.html`，当前包含：
+旧版匿名 master 包位于 `human_eval/participant/index.html`，包含：
 
 - 192 个 four-alternative forced-choice identity trials：目标、固定 donor、两个确定性 non-donor，并允许 `none` 和 `unjudgeable`；
 - 160 个成对比较：冻结协议的四个对比共 128 项，另加 32 个探索性的 K=1 vs K=4 diverse 直接比较（`P0`）；
 - 共 352 个随机顺序、随机左右位置的 blinded trials；公开包不暴露身份、方法名、条件名或源文件名。
 
-这个 v1 页面只收集 4-AFC 和成对的**身份相似度**选择，且当前 analyzer 要求单个 response 覆盖全部 352 项；它是对盲化、媒体散列和解盲分析链路的工程验证，不应直接作为正式招募页面分发。按照冻结协议，正式收集前还必须加入平衡的不完全区组、约 10% attention checks、预注册排除规则，以及与身份题分屏的 prompt-adherence/视觉质量题。这样才能控制疲劳和区分“更像本人”与“图片更漂亮/更符合 prompt”。
+v1 页面保留为历史工程产物，不再作为当前实验。当前 v2 位于 `human_eval_v2/`，只保留三个直接相关的 pairwise 对照：P0（diverse K=4 对 K=1）、P1（diverse K=4 对 repeated K=4）和 P3（global/patch reciprocal conflict）。它包含 96 个唯一 pair，分成 `A01–A05`、`B01–B05` 十份各 48 题的表单；每个 pair 恰好获得 5 个展示位置。每份表单的 identity、prompt、base seed、contrast 和左右方向均平衡，而且同一参与者不会重复看到同一张候选生成图。
 
-获得机构 human-subjects approval/exemption 并完成上述冻结后，每个正式 item 至少需要 5 个独立评分。报告应包含 4-AFC accuracy、`none`/unjudgeable rate、pairwise win/tie/loss、inter-rater agreement 和 identity-clustered interval；prompt adherence 与视觉质量不得混入 identity-likeness 终点。
+页面只问哪张图更像三张 held-out reference 中的同一个人，允许 A、B、相同和无法判断。10 名不同参与者完成 10 份表单，共 480 次判断；分析按唯一 pair、identity、contrast 依次等权聚合，并计算 identity-bootstrap 95% 区间。原始 participant code 的重复经收集者确认来自不同的人；分析只在副本中以 form-derived pseudonym 消除代码碰撞，原始 response 未修改。完整定义、结果和运行命令见 [H1 人类感知身份相似度实验](../docs/HUMAN_IDENTITY_LIKENESS_V2.md)。
 
-目前没有任何真实 rater response 被纳入分析。因此本报告**不能**回答“人类更喜欢 K=4 diverse”或“global embedding 让人眼更像本人”；它只能给出下一阶段人评需要检验的有根据假设。
+| 对照 | 偏好分数 | 95% CI | focal / tie / comparator | 无法判断 |
+|---|---:|---:|---:|---:|
+| P0：diverse K=4 vs K=1 | 0.47969 | [0.38698, 0.57083] | 35 / 56 / 36 | 33 |
+| P1：diverse K=4 vs repeated K=4 | 0.50573 | [0.43880, 0.58256] | 37 / 54 / 36 | 33 |
+| P3：global-target vs patch-target | 0.38385 | [0.13906, 0.66615] | 35 / 3 / 53 | 69 |
+
+所有区间均覆盖 0.5。P0/P1 是感知层面的 null pilot；P3 是方向上偏向 patch-target、但缺失率高且身份异质的未决结果。
 
 ## 对“哪种信息更重要”的当前回答
 
 按现有自动证据，最合理的优先级是：
 
-1. **Global face-recognition embedding 是主要的类别级身份控制信号。** 冲突输出有 93.75% 被独立 LVFace 判为跟随 global 身份。
-2. **多样参考可能为联合身份通路提供补充信息，但效应很小。** 它优于相同图重复的 target cosine 点估计，尚未在独立 margin 或人评上形成稳健证据；当前设计也无法判断增益来自 global embeddings、patch features 还是二者的交互。
-3. **Patch/局部视觉通路单独不足以覆盖冲突的 global 信号。** 但当前实验没有 global-only 或 patch-only 的合法原生模式，不能把通路冲突解释为单通路充分性测试。
+1. **Global face-recognition embedding 是主要的自动识别器身份控制信号。** 冲突输出有 93.75% 被独立 LVFace 判为跟随 global 身份；这不代表人类判断也由它主导。
+2. **当前多样参考没有显示人类感知收益。** 自动 target cosine 的小幅增益没有转化为 P0/P1 的可检测人评优势。
+3. **Patch/local cues 是一个待验证的竞争解释，不是唯一后续方向。** P3 可判断票偏向 patch-target，而高无法判断率、跨 0.5 的区间和身份异质性阻止强结论；冲突条件也不是单通路充分性测试。当前人评没有真实照片候选参照，尚不能直接估计生成图的人类 likeness 缺口。
 4. **真正缺失的很可能不是“身份是否存在”，而是身份内部的细粒度保真。** 正常生成条件的 Rank-1 全部正确，但与真实身份模板仍有约 `0.34–0.35` 的 cosine gap，并伴随约 9% 的身份间 spread 收缩。
 
 第 4 点是测量层面的诊断，不是对某个神经网络层或预训练均值的机制结论。最终要回答“哪种信息让人类看来更像”，必须把人类 pairwise likeness 作为主要结果，再检验它是否由 global embedding、参考多样性、局部形状/纹理或其他条件解释。
@@ -247,18 +255,16 @@ Text-only 的 contraction ratio 为 `0.462417`，说明相同 prompt/base-model 
 - Global/patch conflict 是 OOD intervention，只能比较相对通路控制，不能代表 PhotoMaker 正常输入分布。
 - LVFace 对本方法是独立 evaluator，但仍是单一 face-recognition family；正式生成结论还需要固定的 AdaFace/CurricularFace-family sensitivity evaluator。
 - InsightFace 是 conditioner-aligned evaluator，可能高估与生成器训练目标一致的特征。
-- 真实 K=1 基线和生成结果之间的 embedding gap 不能直接换算成人类相似度；正式人评尚未完成，当前 v1 master 页面也尚未实现冻结协议要求的区组与 attention checks。
+- 真实 K=1 基线和生成结果之间的 embedding gap 不能直接换算成人类相似度；v2 人评已完成，但只有 8 个身份，三个 identity-bootstrap 区间均覆盖 0.5。
 - Cohort geometry 只有 8 个身份，effective rank 最高为 7；它是描述性诊断，不识别 literal average face 或预训练机制。
 - 本实验没有内部 activation ablation，不能定位 QFormer、fusion、U-Net 或 ViT layer 的信息损失，也不能把 E2 的 null matched-layer 结果改写成正结果。
 - FEI、InsightFace-dependent weights、生成图和 embeddings 受研究用途与隐私约束，均保持本地且 Git-ignored；本报告不包含人脸图像。
 
 ## 下一步
 
-1. 先把 v1 master 页面升级为冻结的平衡不完全区组版本，加入 attention checks 和分屏的 prompt/quality 控制题；在批准/豁免后每项收集至少 5 个独立评分，以人类 identity likeness 检验 K=4 diverse 是否优于 repeat/K=1，以及 global/patch 冲突是否与自动 evaluator 一致。
-2. 固定并加入 AdaFace 或 CurricularFace-family evaluator，复核 target cosine、margin、通路跟随和 contraction，避免单一识别器结论。
-3. 在未接触的外部身份/数据上原样复现冻结条件；不得根据本次 8 个身份重新挑 prompt、seed 或 donor。
-4. 若人评确认多样参考有收益，再设计信息分解：保持 global embedding 固定而改变参考 patch，或在架构允许的情况下做 global-only/patch-only ablation；同时分别测量几何形状、局部纹理和显著个体特征。
-5. 只有外部 representation gate、多参考 gate 和人评均支持时，才考虑训练小型 mapper；当前结果不授权用 block 11 或 LVFace evaluator 反复调生成器。
+1. 冻结本轮人评，不在相同 8 个身份上继续加人、调 prompt/donor 或改变分析规则。
+2. 按 [2026-09-05 中文研究计划](E:/comp776_3D/docs/RESEARCH_PLAN_ZH.md)，先在新身份上建立真实候选参照，分开本人与陌生图库评分，测量中性与微笑条件下的 likeness 缺口；开发预试验与正式确认分离。P0/P1 暂不继续扩展。
+3. 根据可靠诊断选择一种受控干预；global/local 只保留为竞争解释。Mapper/router 仍需独立的人类证据，不是完成核心诊断课题的必要产物。
 
 ## 结构化证据
 
