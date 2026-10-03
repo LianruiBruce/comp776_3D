@@ -1,9 +1,0 @@
-status,metric,treatment,control,expected_pair_count,valid_pair_count,identity_count,valid_identity_count,estimate,ci95_lower,ci95_upper,evaluator,model
-complete,mouth_smile_mean,smile,neutral,24,24,12,12,0.2577602676728929,0.1485294183759161,0.3704597582088324,,PhotoMaker V2
-complete,jaw_open,smile,neutral,24,24,12,12,0.0007502330893961,-0.0056919087116208,0.0091953745581728,,PhotoMaker V2
-complete,target_similarity,smile,neutral,24,24,12,12,-0.001350519575,-0.0094117157411458,0.0065797688343749,adaface,PhotoMaker V2
-complete,target_impostor_margin,smile,neutral,24,24,12,12,0.000368931625,-0.0127371620540624,0.0126146462276041,adaface,PhotoMaker V2
-complete,end_to_end_rank1,smile,neutral,24,24,12,12,0.0,0.0,0.0,adaface,PhotoMaker V2
-complete,target_similarity,smile,neutral,24,24,12,12,0.0018939202041666,-0.0174981221564583,0.0196560174257291,lvface,PhotoMaker V2
-complete,target_impostor_margin,smile,neutral,24,24,12,12,0.0035785256541666,-0.0227922560884374,0.0316466630019791,lvface,PhotoMaker V2
-complete,end_to_end_rank1,smile,neutral,24,24,12,12,0.0,0.0,0.0,lvface,PhotoMaker V2
